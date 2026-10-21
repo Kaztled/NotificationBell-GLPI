@@ -61,8 +61,8 @@ The compatibility range is declared and enforced in [`setup.php`](setup.php).
 
 ## 🚀 Installation
 
-1. Download the production release ZIP, or clone this repository for development.
-2. Name the plugin folder **`notificationbell`** and place it inside `GLPI_ROOT/plugins/`.
+1. Download the production release archive.
+2. Extract it into `GLPI_ROOT/plugins/`. The archive already contains the **`notificationbell/`** folder.
 3. In GLPI, go to **Setup → Plugins**, then install and activate **Notification bell**.
 4. Reload the page. The bell will appear next to the user menu.
 
