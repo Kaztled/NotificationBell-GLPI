@@ -13,7 +13,7 @@ Profile-aware inboxes, personal and team mentions, and live updates—right insi
 
 **All · Incoming · Resolved · Attention · Replies**
 
-[Features](#-features) · [Requirements](#-requirements) · [Installation](#-installation-and-updates) · [Live updates](#-live-updates) · [Development](#-development)
+[Preview](#-preview) · [Features](#-features) · [Requirements](#-requirements) · [Installation](#-installation-and-updates) · [Live updates](#-live-updates) · [Development](#-development)
 
 </div>
 
@@ -38,6 +38,26 @@ The bell provides a five-item preview and a full history with up to **1,000 rece
 The limits apply after permissions, category filtering and arrival deduplication. Hidden records do not displace eligible older notices. Distinct status updates remain separate even within the same second, while repeated callbacks for one update remain deduplicated.
 
 Each notification includes the ticket title and numeric ID, so you can identify the ticket before opening it.
+
+## 🖼️ Preview
+
+### Recent notifications at a glance
+
+Open the bell to check recent activity, the unread count, and the live connection status. Select **View all** to open the full history.
+
+<p align="center">
+  <img src="images/in-app.png" alt="Notification bell dropdown showing a new ticket, the unread count, connection status, and View all button" width="385">
+</p>
+
+### Full history and read controls
+
+Browse **All**, **Incoming**, **Resolved**, **Attention**, and **Replies**, with **Mark all as read** and **Clear history** controls in the same window.
+
+<p align="center">
+  <img src="images/modal.png" alt="Notification history showing the five category tabs, a new ticket notification, and read and clear controls" width="766">
+</p>
+
+The screenshots show the English interface. Labels follow the user's GLPI language, and colors follow the active palette.
 
 ## 📋 Requirements
 
