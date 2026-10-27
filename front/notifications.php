@@ -30,6 +30,7 @@ $action = $input['action'] ?? ($method === 'GET' ? 'list' : '');
 $view = $input['view'] ?? 'history';
 $groupId = $input['group_id'] ?? 0;
 $id = $input['id'] ?? 0;
+$scope = $input['scope'] ?? 'group';
 foreach ([$groupId, $id] as $value) {
     if ((!is_string($value) && !is_int($value))
         || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false
@@ -40,24 +41,26 @@ foreach ([$groupId, $id] as $value) {
 $groupId = (int) $groupId;
 $id = (int) $id;
 if (!is_string($action)
+    || !in_array($scope, ['group', 'user'], true)
     || !in_array($view, ['preview', 'history'], true)
     || ($method === 'GET' && $action !== 'list')
-    || ($method === 'POST' && (!in_array($action, ['mark_read', 'mark_all_read', 'clear'], true) || $groupId <= 0))
+    || ($method === 'POST' && !in_array($action, ['mark_read', 'mark_all_read', 'clear'], true))
+    || ($action === 'mark_read' && $scope === 'group' && $groupId <= 0)
     || ($action === 'mark_read' && $id <= 0)
 ) {
     return new JsonResponse(['error' => 'Invalid action'], 400, $headers);
 }
 
-// Every mutation requires POST and GLPI's CSRF token; GET is reserved for listing.
+// GLPI 11 uses a token; GLPI 12 checks browser request origin in its controller.
+$csrfMode = version_compare(GLPI_VERSION, '12.0.0', '<') ? 'token' : 'origin';
 if ($method === 'POST') {
-    $token = $_SERVER['HTTP_X_GLPI_CSRF_TOKEN'] ?? ($_POST['_glpi_csrf_token'] ?? '');
-    if (!is_string($token)) {
-        return new JsonResponse(['error' => 'Invalid token'], 400, $headers);
+    if ($csrfMode === 'token') {
+        $token = $_SERVER['HTTP_X_GLPI_CSRF_TOKEN'] ?? ($_POST['_glpi_csrf_token'] ?? '');
+        if (!is_string($token)) {
+            return new JsonResponse(['error' => 'Invalid token'], 400, $headers);
+        }
+        Session::checkCSRF(['_glpi_csrf_token' => $token], true);
     }
-    Session::checkCSRF(
-        ['_glpi_csrf_token' => $token],
-        true
-    );
 }
 
 // Reads must not refresh PHP session storage (including requests from older cached clients).
@@ -74,7 +77,7 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 if ($method === 'POST') {
     switch ($action) {
         case 'mark_read':
-            PluginNotificationbellNotification::markRead($userId, $groupId, $id);
+            PluginNotificationbellNotification::markRead($userId, $groupId, $id, $scope);
             break;
         case 'mark_all_read':
             PluginNotificationbellNotification::markAllRead($userId, $groupId);
@@ -87,5 +90,7 @@ if ($method === 'POST') {
 
 $response = new JsonResponse(null, 200, $headers);
 $response->setEncodingOptions(JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-$response->setData(PluginNotificationbellNotification::feed($userId, $groupId ?: null, $view === 'preview'));
+$feed = PluginNotificationbellNotification::feed($userId, $groupId ?: null, $view === 'preview');
+$feed['csrf_mode'] = $csrfMode;
+$response->setData($feed);
 return $response;

@@ -1,0 +1,6 @@
+/* GLPI 11 leaves --tblr-bg-surface-secondary light in dark palettes. */
+html[data-glpi-theme-dark="1"] .nb-host,
+html[data-glpi-theme-dark="1"] .nb-modal,
+html[data-glpi-theme-dark="1"] .nb-confirm {
+ --nb-surface-raised:color-mix(in srgb,var(--nb-surface),var(--nb-text) 10%);
+}

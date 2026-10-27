@@ -1,0 +1,7 @@
+<?php
+// Copy to GLPI_CONFIG_DIR/notificationbell.php, outside the public web root.
+return [
+    'state_dir' => '/var/lib/notificationbell',
+    'url' => '/notificationbell-live/events',
+    'secret' => 'REPLACE_WITH_THE_SAME_RANDOM_SECRET_AS_NB_SECRET',
+];

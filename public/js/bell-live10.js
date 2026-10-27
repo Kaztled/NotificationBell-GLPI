@@ -8,13 +8,17 @@
     window.notificationbellLoaded = true;
     const endpoint = new URL('../front/notifications.php', script.src);
     if (endpoint.origin !== window.location.origin) return;
-    const POLL_INTERVAL = 60000;
+    const POLL_INTERVAL = 10000;
     const MAX_RETRY_DELAY = 900000;
     const defaults = {
-        all: 'All', resolved: 'Resolved', attention: 'Attention', responses: 'Replies',
+        all: 'All', incoming: 'Incoming', resolved: 'Resolved', attention: 'Attention', responses: 'Replies',
+        personalInbox: 'Personal mentions', live: 'Live', reconnecting: 'Reconnecting', realtimeUnavailable: 'Live service unavailable',
         notifications: 'Notifications', recent: 'Recent notifications', viewAll: 'View all',
         sharedInbox: 'Shared group inbox', sharedInboxGroup: 'Shared inbox · %s',
-        close: 'Close', markAllRead: 'Mark all as read', clear: 'Clear',
+        close: 'Close', cancel: 'Cancel', markAllRead: 'Mark all as read', clear: 'Clear history',
+        confirmClear: 'Clear notification history?',
+        clearGroupDetail: 'Delete all notifications from %s and your personal inbox? The shared inbox will be cleared for its other members too.',
+        clearPersonalDetail: 'Delete all notifications from your personal inbox?',
         filter: 'Filter notifications', groupSelector: 'Notification group', unread: 'Unread',
         newCount: '%d new', noGroup: 'No group', empty: 'No notifications yet.',
         emptyNoGroup: 'You do not belong to a GLPI group.',
@@ -27,11 +31,13 @@
         resolved: '✓',
         attention: '!',
         responses: '✉',
+        incoming: '↓',
+        mentions: '@',
         other: '•',
     };
     let savedGroupId = 0;
     try { savedGroupId = Number(window.localStorage.getItem('notificationbell.group_id')) || 0; } catch (_) { /* Storage can be disabled. */ }
-    const state = {notifications: [], groups: [], groupId: savedGroupId, unread: 0, tab: 'all', openHost: null, modalOpen: false, i18n: defaults};
+    const state = {notifications: [], groups: [], groupId: savedGroupId, unread: 0, tab: 'all', openHost: null, modalOpen: false, i18n: defaults, csrfMode: 'token'};
     let requestQueue = Promise.resolve();
     let accessStopped = false;
     let queuedRequests = 0;
@@ -39,6 +45,14 @@
     let pollingStarted = false;
     let retryDelay = POLL_INTERVAL;
     let nextPollAt = Date.now() + POLL_INTERVAL;
+    let eventStream = null;
+    let streamToken = '';
+    let streamExpires = 0;
+    let streamRenewal = null;
+    let liveRefresh = null;
+    let liveStatus = 'realtimeUnavailable';
+    let liveDirty = false;
+    let clearTrigger = null;
     const formatter = new Intl.RelativeTimeFormat(document.documentElement.lang || globalThis.navigator?.language || 'en', {numeric: 'auto'});
     const tr = (key, ...args) => args.reduce((message, value) => message.replace(/%[sd]/, String(value)), state.i18n[key] || defaults[key] || key);
 
@@ -61,12 +75,9 @@
         return formatter.format(Math.round(hours / 24), 'day');
     }
 
-    // The server enforces authorization; this request wrapper supplies CSRF for writes.
-    function request(action = 'list', id = null) {
+    // The server enforces authorization; GLPI 11 needs a token for writes.
+    function request(action = 'list', id = null, scope = 'group') {
         const groupId = state.groupId;
-        if (action !== 'list' && groupId <= 0) {
-            return action === 'mark_all_read' ? request() : Promise.resolve();
-        }
 
         // Preserve the order of reads and writes so a read cannot restore stale state.
         const run = async () => {
@@ -86,12 +97,14 @@
                 url.searchParams.set('view', view);
                 if (requestedGroupId > 0) url.searchParams.set('group_id', String(requestedGroupId));
             } else {
-                const token = document.querySelector('meta[property="glpi:csrf_token"]')?.content;
-                if (!token) throw new Error(tr('csrfError'));
                 options.method = 'POST';
-                options.headers['X-Glpi-Csrf-Token'] = token;
+                if (state.csrfMode === 'token') {
+                    const token = document.querySelector('meta[property="glpi:csrf_token"]')?.content;
+                    if (!token) throw new Error(tr('csrfError'));
+                    options.headers['X-Glpi-Csrf-Token'] = token;
+                }
                 options.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-                options.body = new URLSearchParams({action, view, group_id: String(requestedGroupId), ...(id === null ? {} : {id: String(id)})});
+                options.body = new URLSearchParams({action, view, scope, group_id: String(requestedGroupId), ...(id === null ? {} : {id: String(id)})});
             }
             const timeout = window.setTimeout(() => controller.abort(), 15000);
             try {
@@ -124,13 +137,16 @@
                 if (!data || !Array.isArray(data.notifications) || !Array.isArray(data.groups)) throw new Error(tr('loadError'));
                 if (state.groupId !== requestedGroupId) return;
                 state.notifications = data.notifications;
+                if (data.csrf_mode === 'token' || data.csrf_mode === 'origin') state.csrfMode = data.csrf_mode;
                 if (data.i18n && typeof data.i18n === 'object') state.i18n = {...defaults, ...data.i18n};
                 state.groups = data.groups;
                 state.groupId = Number(data.group_id) || 0;
                 state.unread = Number(data.unread) || 0;
+                connectLive(data.realtime);
                 render();
             } catch (error) {
                 if (accessStopped) {
+                    closeLive();
                     // Revocation removes ticket excerpts already displayed in the page too.
                     state.notifications = [];
                     state.groups = [];
@@ -144,11 +160,11 @@
         };
 
         queuedRequests++;
+        updateActions();
         schedulePoll();
         const pending = requestQueue.then(run, run).then(value => {
             retryDelay = POLL_INTERVAL;
-            // Spread clients slightly so simultaneous page loads do not synchronize every poll.
-            nextPollAt = Date.now() + POLL_INTERVAL + Math.floor(Math.random() * 5000);
+            nextPollAt = Date.now() + POLL_INTERVAL;
             return value;
         }, error => {
             retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY);
@@ -156,10 +172,83 @@
             throw error;
         }).finally(() => {
             queuedRequests--;
+            updateActions();
+            if (liveDirty && queuedRequests === 0 && !accessStopped) queueLiveRefresh();
             schedulePoll();
         });
         requestQueue = pending.catch(() => {});
         return pending;
+    }
+
+    function updateActions() {
+        document.querySelectorAll('.nb-modal-actions button,.nb-dropdown-clear,.nb-confirm-actions button').forEach(button => { button.disabled = queuedRequests > 0; });
+    }
+
+    function closeLive(discardPending = true) {
+        eventStream?.close();
+        eventStream = null;
+        streamToken = '';
+        window.clearTimeout(streamRenewal);
+        if (discardPending) {
+            window.clearTimeout(liveRefresh);
+            liveRefresh = null;
+            liveDirty = false;
+        }
+    }
+
+    function queueLiveRefresh() {
+        liveDirty = true;
+        if (liveRefresh || queuedRequests > 0 || accessStopped) return;
+        liveRefresh = window.setTimeout(() => {
+            liveRefresh = null;
+            liveDirty = false;
+            request().catch(showError);
+        }, 100);
+    }
+
+    function renewLive() {
+        closeLive();
+        if (accessStopped) return;
+        request().catch(error => {
+            showError(error);
+            setLiveStatus('reconnecting');
+            if (!accessStopped) streamRenewal = window.setTimeout(renewLive, 15000);
+        });
+    }
+
+    function setLiveStatus(status) {
+        liveStatus = status;
+        document.querySelectorAll('.nb-live').forEach(node => {
+            node.textContent = tr(status);
+            node.classList.toggle('is-live', status === 'live');
+        });
+    }
+
+    // SSE runs in hidden tabs too. Only the authenticated JSON API returns ticket data.
+    function connectLive(connection) {
+        if (!connection || typeof window.EventSource !== 'function') {
+            closeLive(false);
+            setLiveStatus('realtimeUnavailable');
+            return;
+        }
+        // A regular fallback read may mint a token, but it must not churn a healthy stream.
+        if (eventStream && streamExpires > Date.now() + 30000) return;
+        closeLive(false);
+        const url = new URL(connection.url, window.location.href);
+        if (url.origin !== window.location.origin || !['http:', 'https:'].includes(url.protocol)) return;
+        streamToken = connection.token;
+        streamExpires = connection.ttl ? Date.now() + Number(connection.ttl) * 1000 : Number(connection.expires) * 1000;
+        url.searchParams.set('token', streamToken);
+        eventStream = new window.EventSource(url.href);
+        setLiveStatus('reconnecting');
+        eventStream.onopen = () => {
+            setLiveStatus('live');
+            // Resync after every connection, including relay downtime and missed events.
+            queueLiveRefresh();
+        };
+        eventStream.addEventListener('changed', queueLiveRefresh);
+        eventStream.onerror = () => setLiveStatus('reconnecting');
+        streamRenewal = window.setTimeout(renewLive, Math.max(1000, streamExpires - Date.now() - 15000));
     }
 
     // One timer after completion: never overlap or accumulate background requests.
@@ -174,19 +263,38 @@
         }, Math.max(0, nextPollAt - Date.now()));
     }
 
+    // An inactive tab may have missed updates while its fallback timer was paused.
+    function refreshNow() {
+        if (accessStopped || document.hidden || globalThis.navigator?.onLine === false) return;
+        if (queuedRequests > 0) {
+            liveDirty = true;
+            return;
+        }
+        window.clearTimeout(liveRefresh);
+        liveRefresh = null;
+        liveDirty = false;
+        nextPollAt = Date.now();
+        schedulePoll();
+    }
+
     function startPolling() {
         pollingStarted = true;
         schedulePoll();
-        document.addEventListener('visibilitychange', schedulePoll);
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) schedulePoll();
+            else refreshNow();
+        });
         window.addEventListener('offline', schedulePoll);
-        window.addEventListener('online', schedulePoll);
+        window.addEventListener('online', refreshNow);
+        window.addEventListener('focus', refreshNow);
         window.addEventListener('pagehide', () => {
+            closeLive();
             pollingStarted = false;
             window.clearTimeout(pollTimer);
         });
         window.addEventListener('pageshow', () => {
             pollingStarted = true;
-            schedulePoll();
+            refreshNow();
         });
     }
 
@@ -208,7 +316,7 @@
             state.unread = 0;
             try { window.localStorage.setItem('notificationbell.group_id', String(state.groupId)); } catch (_) { /* Storage can be disabled. */ }
             render();
-            request(state.openHost || state.modalOpen ? 'mark_all_read' : 'list').catch(showError);
+            request().catch(showError);
         });
         return select;
     }
@@ -229,7 +337,7 @@
             if (!notification.unread || !link.href) return;
             event.preventDefault();
             try {
-                await request('mark_read', notification.id);
+                await request('mark_read', notification.id, notification.scope || 'group');
             } catch (error) {
                 showError(error);
             }
@@ -259,7 +367,7 @@
         }
     }
 
-    // Opening the history marks accessible notices read for the selected group.
+    // Reading is an explicit action; opening history preserves its unread badges.
     function openModal() {
         closeDropdown();
         state.modalOpen = true;
@@ -269,7 +377,7 @@
             document.body.classList.add('nb-modal-visible');
             modal.querySelector('.nb-modal-close')?.focus();
         }
-        request('mark_all_read').catch(showError);
+        request().catch(showError);
     }
 
     // Restore document scrolling when the dialog closes.
@@ -278,6 +386,59 @@
         const modal = document.getElementById('notificationbell-modal');
         if (modal) modal.hidden = true;
         document.body.classList.remove('nb-modal-visible');
+    }
+
+    function openClearConfirm(trigger) {
+        if (!state.notifications.length || queuedRequests > 0) return;
+        const dialog = document.getElementById('notificationbell-confirm');
+        if (!dialog) return;
+        const groupName = state.groups.find(group => Number(group.id) === state.groupId)?.name || tr('personalInbox');
+        dialog.querySelector('.nb-confirm-title').textContent = tr('confirmClear');
+        dialog.querySelector('.nb-confirm-detail').textContent = state.groupId > 0
+            ? tr('clearGroupDetail', groupName) : tr('clearPersonalDetail');
+        dialog.querySelector('.nb-confirm-cancel').textContent = tr('cancel');
+        dialog.querySelector('.nb-confirm-delete').textContent = tr('clear');
+        dialog.querySelector('.nb-status').textContent = '';
+        clearTrigger = trigger;
+        dialog.hidden = false;
+        dialog.querySelector('.nb-confirm-cancel').focus();
+    }
+
+    function closeClearConfirm() {
+        const dialog = document.getElementById('notificationbell-confirm');
+        if (dialog) dialog.hidden = true;
+        if (clearTrigger?.isConnected && !clearTrigger.hidden) clearTrigger.focus();
+        else if (state.modalOpen) document.querySelector('.nb-modal-close')?.focus();
+        else state.openHost?.querySelector('.nb-bell')?.focus();
+        clearTrigger = null;
+    }
+
+    function installClearConfirm() {
+        const dialog = element('div', 'nb-confirm');
+        dialog.id = 'notificationbell-confirm';
+        dialog.hidden = true;
+        const backdrop = element('div', 'nb-confirm-backdrop');
+        const card = element('section', 'nb-confirm-card');
+        card.setAttribute('role', 'alertdialog');
+        card.setAttribute('aria-modal', 'true');
+        card.setAttribute('aria-labelledby', 'nb-confirm-title');
+        card.setAttribute('aria-describedby', 'nb-confirm-detail');
+        const title = element('h2', 'nb-confirm-title');
+        title.id = 'nb-confirm-title';
+        const detail = element('p', 'nb-confirm-detail');
+        detail.id = 'nb-confirm-detail';
+        const actions = element('div', 'nb-confirm-actions');
+        const cancel = element('button', 'nb-confirm-cancel');
+        cancel.type = 'button';
+        const remove = element('button', 'nb-confirm-delete');
+        remove.type = 'button';
+        actions.append(cancel, remove);
+        card.append(title, detail, actions, element('p', 'nb-status', ''));
+        dialog.append(backdrop, card);
+        document.body.append(dialog);
+        backdrop.addEventListener('click', closeClearConfirm);
+        cancel.addEventListener('click', closeClearConfirm);
+        remove.addEventListener('click', () => request('clear').then(closeClearConfirm).catch(showError));
     }
 
     // Install one bell beside each GLPI user menu; the inbox state is shared.
@@ -315,7 +476,7 @@
             host.classList.add('is-open');
             state.openHost = host;
             button.setAttribute('aria-expanded', 'true');
-            request('mark_all_read').catch(showError);
+            request().catch(showError);
         });
     }
 
@@ -334,15 +495,13 @@
         document.body.append(modal);
         modal.querySelectorAll('[data-nb-close], .nb-modal-close').forEach(node => node.addEventListener('click', closeModal));
         modal.querySelector('.nb-mark-all').addEventListener('click', () => request('mark_all_read').catch(showError));
-        modal.querySelector('.nb-clear').addEventListener('click', () => {
-            request('clear').then(closeModal).catch(showError);
-        });
+        modal.querySelector('.nb-clear').addEventListener('click', event => openClearConfirm(event.currentTarget));
     }
 
     // Rebuild both views from one response so group switches cannot mix inboxes.
     function render() {
         const currentGroup = state.groups.find(group => Number(group.id) === state.groupId);
-        const groupName = currentGroup?.name || tr('noGroup');
+        const groupName = currentGroup?.name || tr('personalInbox');
         document.querySelectorAll('.nb-host').forEach(host => {
             host.querySelector('.nb-status').textContent = '';
             const badge = host.querySelector('.nb-badge');
@@ -352,9 +511,18 @@
             const header = host.querySelector('.nb-dropdown-header');
             header.replaceChildren();
             const copy = element('div');
-            copy.append(element('strong', '', tr('notifications')), element('span', '', groupName));
+            copy.append(element('strong', '', tr('notifications')), element('span', '', groupName), element('span', `nb-live ${liveStatus === 'live' ? 'is-live' : ''}`, tr(liveStatus)));
             header.append(copy);
             if (state.unread) header.append(element('span', 'nb-count', tr('newCount', state.unread)));
+            const clear = element('button', 'nb-dropdown-clear');
+            clear.type = 'button';
+            clear.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v7m4-7v7"/></svg>';
+            clear.setAttribute('aria-label', tr('clear'));
+            clear.title = tr('clear');
+            clear.hidden = state.notifications.length === 0;
+            clear.disabled = queuedRequests > 0;
+            clear.addEventListener('click', event => { event.stopPropagation(); openClearConfirm(clear); });
+            header.append(clear);
             const selector = groupSelector();
             if (selector) header.append(selector);
 
@@ -374,19 +542,19 @@
         if (modalSelector) groupHolder.append(modalSelector);
         const tabs = modal.querySelector('.nb-tabs');
         tabs.replaceChildren();
-        for (const key of ['all', 'resolved', 'attention', 'responses']) {
+        for (const key of ['all', 'incoming', 'resolved', 'attention', 'responses']) {
             const button = element('button', state.tab === key ? 'is-active' : '', tr(key));
             button.type = 'button';
             button.setAttribute('role', 'tab');
             button.setAttribute('aria-selected', String(state.tab === key));
-            const count = state.notifications.filter(n => n.unread && (key === 'all' || n.category === key)).length;
+            const count = state.notifications.filter(n => n.unread && (key === 'all' || (key === 'incoming' ? n.incoming : n.category === key))).length;
             if (count) button.append(element('i', '', String(count)));
             button.addEventListener('click', () => { state.tab = key; render(); });
             tabs.append(button);
         }
         const list = modal.querySelector('.nb-modal-list');
         list.replaceChildren();
-        const filtered = state.notifications.filter(n => state.tab === 'all' || n.category === state.tab);
+        const filtered = state.notifications.filter(n => state.tab === 'all' || (state.tab === 'incoming' ? n.incoming : n.category === state.tab));
         if (!filtered.length) list.append(element('p', 'nb-empty', tr('emptyCategory')));
         filtered.forEach(n => list.append(makeItem(n)));
         modal.querySelector('.nb-mark-all').hidden = state.unread === 0;
@@ -402,13 +570,31 @@
         try { await request(); } catch (error) { startupError = error; }
         menus.forEach(installBell);
         installModal();
+        installClearConfirm();
         render();
         if (startupError) showError(startupError);
         startPolling();
         document.addEventListener('click', event => {
-            if (state.openHost && !state.openHost.contains(event.target)) closeDropdown();
+            if (state.openHost && !state.openHost.contains(event.target)
+                && !document.getElementById('notificationbell-confirm')?.contains(event.target)) closeDropdown();
         });
         document.addEventListener('keydown', event => {
+            const confirm = document.getElementById('notificationbell-confirm');
+            if (confirm && !confirm.hidden) {
+                if (event.key === 'Escape') closeClearConfirm();
+                if (event.key === 'Tab') {
+                    const cancel = confirm.querySelector('.nb-confirm-cancel');
+                    const remove = confirm.querySelector('.nb-confirm-delete');
+                    if (event.shiftKey && document.activeElement === cancel) {
+                        event.preventDefault();
+                        remove.focus();
+                    } else if (!event.shiftKey && document.activeElement === remove) {
+                        event.preventDefault();
+                        cancel.focus();
+                    }
+                }
+                return;
+            }
             if (event.key === 'Escape') {
                 if (state.modalOpen) closeModal();
                 else closeDropdown();

@@ -1,0 +1,20 @@
+[Unit]
+Description=NotificationBell realtime relay
+After=network.target
+
+[Service]
+Type=simple
+User=REPLACE_WEB_USER
+Group=REPLACE_WEB_GROUP
+EnvironmentFile=/etc/notificationbell/relay.env
+ExecStart=/usr/bin/php /REPLACE_ABSOLUTE_GLPI_ROOT/plugins/notificationbell/service/relay.php
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

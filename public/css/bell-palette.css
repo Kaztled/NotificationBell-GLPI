@@ -1,0 +1,111 @@
+/* Inherit the active GLPI Color Palette, including custom and dark palettes. */
+.nb-host,.nb-modal,.nb-confirm{
+ --nb-surface:var(--tblr-bg-surface,#fff);
+ --nb-surface-raised:var(--tblr-bg-surface-secondary,#f5f7fb);
+ --nb-text:var(--tblr-body-color,#1d273b);
+ --nb-muted:color-mix(in srgb,var(--nb-text),transparent 35%);
+ --nb-subtle:color-mix(in srgb,var(--nb-text),transparent 48%);
+ --nb-border:var(--tblr-border-color,#dce1e7);
+ --nb-primary:var(--tblr-primary,#206bc4);
+ --nb-primary-fg:var(--tblr-primary-fg,#fff);
+ --nb-danger:var(--tblr-danger,#d63939);
+ --nb-success:var(--tblr-success,#2fb344);
+ --nb-tint:color-mix(in srgb,var(--nb-primary),var(--nb-surface) 89%);
+ --nb-tint-strong:color-mix(in srgb,var(--nb-primary),var(--nb-surface) 80%);
+ --nb-danger-tint:color-mix(in srgb,var(--nb-danger),var(--nb-surface) 90%);
+ --nb-danger-border:color-mix(in srgb,var(--nb-danger),var(--nb-surface) 68%);
+ --nb-shadow:rgba(0,0,0,.22);
+}
+/* Position the bell in GLPI navigation and keep its dropdown above page content. */
+.nb-host{position:relative;display:flex;align-items:center;margin-right:.65rem}
+.nb-bell{position:relative;display:flex;align-items:center;justify-content:center;width:2.4rem;height:2.4rem;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
+.nb-bell:hover,.nb-bell:focus-visible{background:var(--nb-tint-strong);outline:none}
+.nb-badge{position:absolute;top:-.12rem;right:-.34rem;min-width:1.15rem;height:1.15rem;padding:0 .2rem;border-radius:999px;background:var(--nb-danger);color:#fff;font-size:.62rem;font-weight:800;line-height:1.15rem;text-align:center}
+.nb-badge[hidden]{display:none}
+.nb-dropdown{display:none;position:absolute;z-index:1050;top:calc(100% + .4rem);right:0;width:min(23rem,calc(100vw - 1rem));overflow:hidden;border:1px solid var(--nb-border);border-radius:.9rem;background:var(--nb-surface);color:var(--nb-text);box-shadow:0 15px 40px var(--nb-shadow)}
+.nb-host.is-open .nb-dropdown{display:block}
+.nb-dropdown-header{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .8rem;border-bottom:1px solid var(--nb-border)}
+.nb-dropdown-header div{display:grid}
+.nb-dropdown-header strong{font-size:.84rem}
+.nb-dropdown-header div span{color:var(--nb-muted);font-size:.69rem}
+.nb-count{padding:.2rem .45rem;border-radius:999px;background:var(--nb-tint-strong);color:var(--nb-text);font-size:.63rem;font-weight:800}
+.nb-dropdown-clear{display:grid;place-items:center;flex:none;width:1.9rem;height:1.9rem;margin-left:auto;border:0;border-radius:.4rem;background:transparent;color:var(--nb-danger);cursor:pointer}
+.nb-dropdown-clear:hover{background:var(--nb-danger-tint);color:var(--nb-danger)}
+.nb-dropdown-clear[hidden]{display:none}
+.nb-list{max-height:min(25rem,calc(100dvh - 10rem));overflow-y:auto;padding:0 .65rem}
+/* Ticket content stays readable in the dropdown and full history. */
+.nb-item{display:grid;grid-template-columns:1.55rem minmax(0,1fr) .4rem;gap:.48rem;align-items:start;padding:.55rem .1rem;border-bottom:1px solid var(--nb-border)}
+.nb-item:last-child{border-bottom:0}
+.nb-item:hover{background:var(--nb-surface-raised)}
+.nb-item.is-unread{background:var(--nb-tint)}
+.nb-item.is-critical{background:var(--nb-danger-tint);border-color:var(--nb-danger-border)}
+.nb-item-icon{display:flex;align-items:center;justify-content:center;width:1.45rem;height:1.45rem;border-radius:.35rem;background:var(--nb-surface-raised);color:var(--nb-muted);font-size:.78rem;font-weight:800}
+.nb-item.is-unread .nb-item-icon{background:var(--nb-tint-strong);color:var(--nb-text)}
+.nb-item.is-critical .nb-item-icon{background:var(--nb-danger-tint);color:var(--nb-danger)}
+.nb-item-link{display:grid;gap:.12rem;min-width:0;color:inherit;text-decoration:none}
+.nb-item-link:hover{color:inherit;text-decoration:none}
+.nb-item-link strong{font-size:.75rem;line-height:1.25}
+.nb-item-link span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:var(--nb-muted);font-size:.69rem;line-height:1.35}
+.nb-item-link time{color:var(--nb-subtle);font-size:.64rem}
+.nb-unread-dot{width:.4rem;height:.4rem;margin-top:.36rem;border-radius:50%;background:var(--nb-primary)}
+.nb-empty{padding:1.2rem .8rem;color:var(--nb-muted);text-align:center;font-size:.75rem}
+.nb-dropdown-footer{padding:.5rem .65rem;border-top:1px solid var(--nb-border)}
+.nb-view-all{width:100%;padding:.45rem;border:0;border-radius:.45rem;background:var(--nb-primary);color:var(--nb-primary-fg);font-size:.72rem;font-weight:800;cursor:pointer}
+.nb-view-all:hover{background:var(--tblr-primary-darken,var(--nb-primary))}
+/* The dialog overlays content while preserving responsive bounds. */
+.nb-modal[hidden]{display:none}
+.nb-modal{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:1rem}
+.nb-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.58)}
+.nb-modal-card{position:relative;display:flex;flex-direction:column;width:min(46rem,100%);max-height:calc(100dvh - 2rem);overflow:hidden;border-radius:1.2rem;background:var(--nb-surface);color:var(--nb-text);box-shadow:0 25px 70px var(--nb-shadow)}
+.nb-modal-header{display:flex;align-items:start;justify-content:space-between;padding:1rem 1.1rem .5rem}
+.nb-modal-header h2{margin:0;font-size:1.1rem}
+.nb-modal-header span{color:var(--nb-muted);font-size:.74rem}
+.nb-modal-close{border:0;background:transparent;color:var(--nb-muted);font-size:1.5rem;cursor:pointer}
+.nb-modal-actions{display:flex;gap:.45rem;padding:0 1.1rem .75rem}
+.nb-modal-actions button{min-height:2.25rem;padding:.4rem .75rem;border:1px solid var(--nb-border);border-radius:.45rem;background:var(--nb-surface);color:var(--nb-text);font-size:.75rem;font-weight:650;cursor:pointer}
+.nb-modal-actions button:hover{background:var(--nb-tint-strong);color:var(--nb-text)}
+.nb-modal-actions .nb-clear{margin-left:auto;border-color:var(--nb-danger-border);color:var(--nb-danger)}
+.nb-modal-actions .nb-clear:hover{background:var(--nb-danger-tint);color:var(--nb-danger)}
+.nb-modal-actions .nb-mark-all{border-color:var(--nb-primary);background:var(--nb-primary);color:var(--nb-primary-fg)}
+.nb-modal-actions .nb-mark-all:hover{background:var(--tblr-primary-darken,var(--nb-primary));color:var(--nb-primary-fg)}
+.nb-host button:focus-visible,.nb-modal button:focus-visible,.nb-confirm button:focus-visible,.nb-group-select:focus-visible{outline:2px solid var(--nb-primary);outline-offset:3px}
+.nb-modal button:disabled{opacity:.5;cursor:wait}
+.nb-dropdown-clear:disabled,.nb-confirm button:disabled{opacity:.5;cursor:wait}
+.nb-live{color:var(--nb-muted);font-size:.68rem}
+.nb-live.is-live{color:var(--nb-success)}
+.nb-live::before{content:'●';margin-right:.3rem;font-size:.55rem}
+.nb-modal-actions button[hidden]{display:none}
+.nb-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.25rem;margin:0 1rem .65rem;padding:.25rem;border:1px solid var(--nb-border);border-radius:.6rem;background:var(--glpi-tabs-bg,var(--nb-surface-raised))}
+.nb-tabs button{display:flex;align-items:center;justify-content:center;gap:.3rem;min-width:0;min-height:2.25rem;padding:.4rem .2rem;border:0;border-radius:.4rem;background:transparent;color:var(--nb-muted);font-size:.7rem;font-weight:650;cursor:pointer}
+.nb-tabs button.is-active{background:var(--glpi-tabs-active-bg,var(--nb-surface));color:var(--glpi-tabs-active-fg,var(--nb-text));box-shadow:0 2px 8px var(--nb-shadow)}
+.nb-tabs i{min-width:1rem;padding:.08rem .24rem;border-radius:999px;background:var(--nb-tint-strong);color:var(--nb-text);font-size:.59rem;font-style:normal}
+.nb-modal-list{display:grid;align-content:start;gap:.25rem;min-height:8rem;overflow-y:auto;padding:0 1rem 1rem}
+.nb-modal-list .nb-item{border:1px solid var(--nb-border);border-radius:.75rem;padding:.65rem}
+.nb-modal-list .nb-item.is-unread{border-color:var(--nb-primary)}
+.nb-modal-list .nb-item.is-critical{border-color:var(--nb-danger)}
+.nb-modal-visible{overflow:hidden}
+.nb-status{margin:0;padding:0 1rem .5rem;color:var(--nb-danger);font-size:.7rem}
+.nb-status:empty{display:none}
+.nb-confirm[hidden]{display:none}
+.nb-confirm{position:fixed;inset:0;z-index:2100;display:flex;align-items:center;justify-content:center;padding:1rem}
+.nb-confirm-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.58)}
+.nb-confirm-card{position:relative;width:min(24rem,100%);padding:1.1rem;border-radius:.9rem;background:var(--nb-surface);color:var(--nb-text);box-shadow:0 20px 55px var(--nb-shadow)}
+.nb-confirm-title{margin:0 0 .45rem;font-size:1rem}
+.nb-confirm-detail{margin:0 0 1rem;color:var(--nb-muted);font-size:.8rem;line-height:1.4}
+.nb-confirm-actions{display:flex;justify-content:flex-end;gap:.5rem}
+.nb-confirm-actions button{padding:.45rem .7rem;border:1px solid var(--nb-border);border-radius:.45rem;background:var(--nb-surface);color:var(--nb-text);font-size:.75rem;font-weight:650;cursor:pointer}
+.nb-confirm-actions .nb-confirm-delete{border-color:var(--nb-danger);background:var(--nb-danger);color:#fff}
+.nb-confirm-actions .nb-confirm-delete:hover{background:color-mix(in srgb,var(--nb-danger),black 15%)}
+.nb-confirm-card .nb-status{padding:.5rem 0 0}
+/* Preserve the dialog within narrow viewports. */
+@media(max-width:640px){.nb-host{margin-right:.15rem}
+.nb-tabs button{font-size:.61rem}
+.nb-modal{padding:.45rem}
+.nb-modal-card{max-height:calc(100dvh - .9rem)}
+}
+/* The selector appears only when GLPI returns multiple authorized groups. */
+.nb-dropdown-header{flex-wrap:wrap}
+.nb-group-select{width:100%;max-width:100%;padding:.35rem .5rem;border:1px solid var(--nb-border);border-radius:.45rem;background:var(--nb-surface);color:var(--nb-text);font:inherit;font-size:.72rem;cursor:pointer}
+.nb-modal-group{margin-top:.5rem}
+.nb-modal-group .nb-group-select{min-width:min(22rem,70vw)}
+
